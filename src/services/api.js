@@ -25,6 +25,13 @@ export const productService = {
   updateStock: (id, sinStock) => api.put(`/products/${id}`, { sinStock }),
 };
 
+export const orderService = {
+  create: (data) => api.post('/orders', data),
+  getAll: (params) => api.get('/orders', { params }),
+  getById: (id) => api.get(`/orders/${encodeURIComponent(id)}`),
+  updateStatus: (id, status) => api.put(`/orders/${encodeURIComponent(id)}/status`, { status })
+};
+
 export const authService = {
   login: (username, password) => api.post('/auth/login', { username, password }),
   register: (username, password) => api.post('/auth/register', { username, password }),

@@ -93,12 +93,15 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
 
       // Para bebida y personalizada, permitir no seleccionar ninguna opción
       const isOptional = key === 'bebida' || key === 'personalizada';
+      // Solo mostrar "Ninguna" si NO hay ninguna opción marcada como default
+      const hasDefault = option.choices && option.choices.some(c => c.isDefault);
+      const showNone = isOptional && !hasDefault;
 
       return (
         <div className="option-group" key={key}>
           <label className="option-label">{labels[key] || key}:</label>
           <div className="option-choices">
-            {isOptional && (
+            {showNone && (
               <label className="choice-label">
                 <input
                   type="radio"

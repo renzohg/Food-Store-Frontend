@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { productService } from '../services/api';
+import { productService, orderService } from '../services/api';
 import { getDefaultOptionsForCategory, getCategoryOptionsConfig } from '../utils/categoryOptions';
 import NotificationModal from '../components/NotificationModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -15,9 +15,18 @@ const AdminPanel = () => {
   const [notification, setNotification] = useState({ isOpen: false, message: '', type: 'success' });
   const [optionsExpanded, setOptionsExpanded] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
-  const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [viewMode, setViewMode] = useState('table');
+  const [selectedCategory, setSelectedCategory] = useState('todas');
+  const [filteredProducts, setFilteredProducts] = useState([]);
   const productsPerPage = 10;
+  const [viewSection, setViewSection] = useState('products'); // 'products' | 'orders'
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [orderSearchTerm, setOrderSearchTerm] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('todos');
+  const [orderExpanded, setOrderExpanded] = useState(null);
+  const [ordersSidebarVisible, setOrdersSidebarVisible] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -37,6 +46,7 @@ const AdminPanel = () => {
       return;
     }
     loadProducts();
+    // NO cargar pedidos automáticamente
   }, [navigate]);
 
   // Efecto para manejar el scroll cuando se muestra/oculta el formulario
@@ -77,33 +87,77 @@ const AdminPanel = () => {
     }
   };
 
-  // Filtrar productos según búsqueda
+  // Filtrar productos según categoría
   useEffect(() => {
     let filtered = [...allProducts];
-    
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      filtered = allProducts.filter(product => 
-        product.name.toLowerCase().includes(term) ||
-        product.description.toLowerCase().includes(term) ||
-        product.price.toString().includes(term)
-      );
+
+    if (selectedCategory !== 'todas') {
+      filtered = filtered.filter(product => product.category === selectedCategory);
     }
     
-    // Paginación
     const startIndex = (currentPage - 1) * productsPerPage;
-    const endIndex = startIndex + productsPerPage;
-    setProducts(filtered.slice(startIndex, endIndex));
+    const needsReset = filtered.length > 0 && startIndex >= filtered.length;
+    const safePage = needsReset ? 1 : currentPage;
+    const sliceStart = (safePage - 1) * productsPerPage;
+    const sliceEnd = sliceStart + productsPerPage;
+
+    setFilteredProducts(filtered);
+    setProducts(filtered.slice(sliceStart, sliceEnd));
     
-    // Resetear página si no hay resultados en la página actual
-    if (filtered.length > 0 && startIndex >= filtered.length) {
+    if (needsReset) {
       setCurrentPage(1);
     }
-  }, [allProducts, searchTerm, currentPage, productsPerPage]);
+  }, [allProducts, currentPage, productsPerPage, selectedCategory]);
+
+  // Cargar pedidos
+  const loadOrders = async (opts = {}) => {
+    try {
+      setOrdersLoading(true);
+      const params = {
+        status: opts.status ?? (orderStatusFilter !== 'todos' ? orderStatusFilter : undefined),
+        search: opts.search ?? (orderSearchTerm.trim() || undefined)
+      };
+      const response = await orderService.getAll(params);
+      setOrders(response.data || []);
+    } catch (error) {
+      if (error.response?.status === 401) {
+        localStorage.removeItem('adminToken');
+        navigate('/admin/login');
+      } else {
+        console.error('Error loading orders', error);
+      }
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
     navigate('/admin/login');
+  };
+
+  const handleOrderStatusChange = async (orderId, status) => {
+    try {
+      await orderService.updateStatus(orderId, status);
+      setNotification({ isOpen: true, message: 'Estado de pedido actualizado', type: 'success' });
+      // Recargar solo el pedido específico
+      const response = await orderService.getById(orderId);
+      setOrders(prevOrders => {
+        const index = prevOrders.findIndex(o => o.orderId === orderId || o._id === orderId);
+        if (index >= 0) {
+          const updated = [...prevOrders];
+          updated[index] = response.data;
+          return updated;
+        }
+        return prevOrders;
+      });
+    } catch (error) {
+      if (error.response?.status === 401) {
+        localStorage.removeItem('adminToken');
+        navigate('/admin/login');
+      }
+      setNotification({ isOpen: true, message: 'Error al actualizar el estado del pedido', type: 'error' });
+    }
   };
 
   const handleInputChange = (e) => {
@@ -200,7 +254,7 @@ const AdminPanel = () => {
         
         // Si tiene choices (choices, bebida, custom, etc.)
         if (option.choices && Array.isArray(option.choices)) {
-          const validChoices = option.choices
+          let validChoices = option.choices
             .filter(c => c && c.name && c.name.trim() !== '') // Solo guardar choices con nombre válido
             .map(c => ({
               name: c.name.trim(),
@@ -208,6 +262,15 @@ const AdminPanel = () => {
               isDefault: c.isDefault || false
             }));
           
+          // Para bebida y personalizada: si no hay default, agregar "Ninguna" como opción por defecto
+          const needsNoneDefault = (key === 'bebida' || key === 'personalizada') && !validChoices.some(c => c.isDefault);
+          if (needsNoneDefault) {
+            validChoices = [
+              ...validChoices,
+              { name: 'Ninguna', priceModifier: 0, isDefault: true }
+            ];
+          }
+
           // Guardar si está habilitada y hay al menos un choice válido
           if (option.enabled && validChoices.length > 0) {
             processedOptions[key] = {
@@ -282,9 +345,13 @@ const AdminPanel = () => {
         if (savedOption) {
           // Si tiene choices, preservar la estructura completa (incluso si está deshabilitada)
           if (savedOption.choices && Array.isArray(savedOption.choices) && savedOption.choices.length > 0) {
+            // Limpiar opción auto "Ninguna" para no mostrarla al admin en edición
+            const cleanedChoices = savedOption.choices
+              .filter(c => !(c.name === 'Ninguna' && c.isDefault));
+
             mergedOptions[key] = {
               enabled: savedOption.enabled !== undefined ? savedOption.enabled : false,
-              choices: savedOption.choices.map(c => ({
+              choices: cleanedChoices.map(c => ({
                 name: c.name || '',
                 priceModifier: parseFloat(c.priceModifier) || 0,
                 isDefault: c.isDefault || false
@@ -622,13 +689,13 @@ const AdminPanel = () => {
           </div>
           {option.enabled && (
             <div className="option-choices-admin">
-              <p className="choices-instruction">Agrega las bebidas que quieras. No es obligatorio tener una por defecto.</p>
+              <p className="choices-instruction">Agrega las bebidas que quieras. Puedes marcar una como por defecto (opcional).</p>
               <button
                 type="button"
                 className="add-choice-btn"
                 onClick={() => {
                   const currentChoices = option.choices || [];
-                  const newChoices = [...currentChoices, { name: '', priceModifier: 0 }];
+                  const newChoices = [...currentChoices, { name: '', priceModifier: 0, isDefault: false }];
                   setFormData({
                     ...formData,
                     options: {
@@ -643,81 +710,132 @@ const AdminPanel = () => {
               >
                 + Agregar Bebida
               </button>
-              {(option.choices || []).map((choice, index) => (
-                <div key={index} className="choice-row-admin">
-                  <div className="choice-input-group">
-                    <label className="input-label">Nombre de la bebida:</label>
-                    <input
-                      type="text"
-                      name={`options.${config.key}.${index}.name`}
-                      value={choice.name || ''}
-                      onChange={handleInputChange}
-                      className="styled-input"
-                      placeholder="Ej: Coca Cola, Agua, etc."
-                    />
-                  </div>
-                  <div className="choice-input-group">
-                    <label className="input-label">Precio (ARS):</label>
-                    <div className="price-modifier-controls">
+              {(option.choices || []).map((choice, index) => {
+                const currentChoices = option.choices || [];
+                const isDefault = choice.isDefault || false;
+                const hasDefault = currentChoices.some(c => c.isDefault);
+                const defaultCount = currentChoices.filter(c => c.isDefault).length;
+                const canUnsetDefault = !isDefault || defaultCount > 1;
+
+                return (
+                  <div key={index} className={`choice-row-admin ${isDefault ? 'default-choice-admin' : ''}`}>
+                    <div className="choice-input-group">
+                      <label className="input-label">Nombre de la bebida:</label>
                       <input
-                        type="number"
-                        name={`options.${config.key}.${index}.priceModifier`}
-                        value={Math.abs(choice.priceModifier || 0)}
-                        onChange={(e) => {
-                          const absValue = Math.abs(parseFloat(e.target.value) || 0);
-                          const isNegative = choice.priceModifier < 0;
-                          handleInputChange({
-                            target: {
-                              name: `options.${config.key}.${index}.priceModifier`,
-                              value: isNegative ? -absValue : absValue
-                            }
-                          });
-                        }}
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        name={`options.${config.key}.${index}.name`}
+                        value={choice.name || ''}
+                        onChange={handleInputChange}
                         className="styled-input"
-                        placeholder="0.00"
+                        placeholder="Ej: Coca Cola, Agua, etc."
                       />
-                      <label className="modifier-type-toggle">
+                    </div>
+                    <div className="choice-input-group">
+                      <label className="input-label">
+                        Precio (ARS):
+                        {isDefault && <span className="default-indicator"> (Por defecto)</span>}
+                      </label>
+                      <div className="price-modifier-controls">
                         <input
-                          type="checkbox"
-                          checked={choice.priceModifier < 0}
+                          type="number"
+                          name={`options.${config.key}.${index}.priceModifier`}
+                          value={Math.abs(choice.priceModifier || 0)}
                           onChange={(e) => {
-                            const currentValue = Math.abs(choice.priceModifier || 0);
+                            const absValue = Math.abs(parseFloat(e.target.value) || 0);
+                            const isNegative = choice.priceModifier < 0;
                             handleInputChange({
                               target: {
                                 name: `options.${config.key}.${index}.priceModifier`,
-                                value: e.target.checked ? -currentValue : currentValue
+                                value: isNegative ? -absValue : absValue
                               }
                             });
                           }}
+                          step="0.01"
+                          min="0"
+                          className="styled-input"
+                          placeholder="0.00"
+                          disabled={isDefault}
                         />
-                        <span>Resta</span>
-                      </label>
+                        {!isDefault && (
+                          <label className="modifier-type-toggle">
+                            <input
+                              type="checkbox"
+                              checked={choice.priceModifier < 0}
+                              onChange={(e) => {
+                                const currentValue = Math.abs(choice.priceModifier || 0);
+                                handleInputChange({
+                                  target: {
+                                    name: `options.${config.key}.${index}.priceModifier`,
+                                    value: e.target.checked ? -currentValue : currentValue
+                                  }
+                                });
+                              }}
+                            />
+                            <span>Resta</span>
+                          </label>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="remove-choice-btn"
-                    onClick={() => {
-                      const currentChoices = option.choices || [];
-                      const newChoices = currentChoices.filter((_, i) => i !== index);
-                      setFormData({
-                        ...formData,
-                        options: {
-                          ...formData.options,
-                          [config.key]: {
-                            ...option,
-                            choices: newChoices
-                          }
+                    <button
+                      type="button"
+                      className="set-default-btn"
+                      onClick={() => {
+                        const current = option.choices || [];
+                        let newChoices;
+                        if (isDefault && defaultCount === 1) {
+                          // Permitir quitar la única por defecto para que se use "Ninguna" auto
+                          newChoices = current.map((c, i) => ({
+                            ...c,
+                            isDefault: false
+                          }));
+                        } else {
+                          newChoices = current.map((c, i) => ({
+                            ...c,
+                            isDefault: i === index
+                          }));
                         }
-                      });
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
+                        setFormData({
+                          ...formData,
+                          options: {
+                            ...formData.options,
+                            [config.key]: {
+                              ...option,
+                              choices: newChoices
+                            }
+                          }
+                        });
+                      }}
+                    >
+                      {isDefault ? '✓ Por defecto' : 'Marcar como por defecto'}
+                    </button>
+                    <button
+                      type="button"
+                      className="remove-choice-btn"
+                      onClick={() => {
+                        const currentChoices = option.choices || [];
+                        if (isDefault && defaultCount === 1 && currentChoices.length > 1) {
+                          // evitar dejar sin default al intentar borrar la única default
+                          setNotification({ isOpen: true, message: 'Marca otra bebida como por defecto antes de eliminar esta.', type: 'error' });
+                          return;
+                        }
+                        const newChoices = currentChoices.filter((_, i) => i !== index);
+                        setFormData({
+                          ...formData,
+                          options: {
+                            ...formData.options,
+                            [config.key]: {
+                              ...option,
+                              choices: newChoices
+                            }
+                          }
+                        });
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -910,13 +1028,141 @@ const AdminPanel = () => {
   };
 
   const categoryOptions = getCategoryOptionsConfig(formData.category);
+  const orderStatusOptions = [
+    { value: 'pendiente', label: 'Pendiente' },
+    { value: 'en_preparacion', label: 'En preparación' },
+    { value: 'listo', label: 'Listo' },
+    { value: 'entregado', label: 'Entregado' },
+  ];
+  const categoryFilters = [
+    { value: 'todas', label: 'Todas' },
+    { value: 'hamburguesas', label: 'Hamburguesas' },
+    { value: 'lomos', label: 'Lomos' },
+    { value: 'pizzas', label: 'Pizzas' },
+    { value: 'empanadas', label: 'Empanadas' }
+  ];
+
+  const filteredCount = filteredProducts.length;
+  const totalPages = Math.ceil(filteredCount / productsPerPage) || 1;
+
+  const renderProductCard = (product) => {
+    const shortDescription = product.description.length > 90
+      ? `${product.description.substring(0, 90)}...`
+      : product.description;
+
+    return (
+      <div className="product-card" key={product._id}>
+        <div className="card-media">
+          {product.image ? (
+            <img src={product.image} alt={product.name} />
+          ) : (
+            <div className="card-placeholder">Sin imagen</div>
+          )}
+          <div className="card-badges">
+            <span className={`badge ${product.published !== false ? 'badge-success' : 'badge-warning'}`}>
+              {product.published !== false ? 'Visible' : 'Oculto'}
+            </span>
+            <span className={`badge ${product.sinStock ? 'badge-danger' : 'badge-neutral'}`}>
+              {product.sinStock ? 'Sin stock' : 'Disponible'}
+            </span>
+          </div>
+        </div>
+        <div className="card-content">
+          <div className="card-header">
+            <div>
+              <h3 className="card-title">{product.name}</h3>
+              <span className="pill">{product.category}</span>
+            </div>
+            <span className="card-price">${product.price.toFixed(2)}</span>
+          </div>
+          <p className="card-description">{shortDescription}</p>
+          <div className="card-stock">
+            <label>Stock</label>
+            <select
+              value={product.sinStock ? 'sinStock' : 'disponible'}
+              onChange={(e) => handleStockChange(product._id, e.target.value)}
+              className="stock-select"
+            >
+              <option value="disponible">Disponible</option>
+              <option value="sinStock">Sin stock</option>
+            </select>
+          </div>
+          <div className="card-actions">
+            <button
+              onClick={() => handleEdit(product)}
+              className="icon-btn btn-edit"
+              title="Editar"
+              aria-label="Editar"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M15.232 5.232a2.5 2.5 0 1 1 3.536 3.536L7.5 20H4v-3.5l11.232-11.268Z"/>
+              </svg>
+            </button>
+            <button
+              onClick={() => handleTogglePublished(product)}
+              className={`icon-btn ${(product.published !== false) ? 'btn-hide' : 'btn-show'}`}
+              title={(product.published !== false) ? 'Ocultar producto' : 'Publicar producto'}
+              aria-label={(product.published !== false) ? 'Ocultar producto' : 'Publicar producto'}
+            >
+              {product.published !== false ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7Z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="m3 3 18 18M10.477 10.489A3 3 0 0 0 12 15c1.657 0 3-1.343 3-3 0-.53-.132-1.03-.365-1.468"/>
+                  <path d="M9.88 4.24A9.42 9.42 0 0 1 12 4c5.5 0 9 7 9 7a17.05 17.05 0 0 1-2.102 3.368M6.236 6.27C4.187 7.77 3 10 3 10s3.5 7 9 7c1.225 0 2.374-.273 3.43-.75"/>
+                </svg>
+              )}
+            </button>
+            <button
+              onClick={() => handleDelete(product._id)}
+              className="icon-btn btn-delete"
+              title="Eliminar"
+              aria-label="Eliminar"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18M9 6v12m6-12v12M5 6l1 14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-14M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="admin-panel">
       <header className="admin-header">
         <h1>Panel de Administración</h1>
         <div className="admin-actions">
-          <button onClick={() => navigate('/')} className="btn-secondary">
+          <button 
+            onClick={() => {
+              setViewSection('products');
+              setOrdersSidebarVisible(false);
+            }} 
+            className={`btn-secondary ${viewSection === 'products' ? 'active-tab' : ''}`}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+            </svg>
+            Publicaciones
+          </button>
+          <button 
+            onClick={() => {
+              if (viewSection === 'products' && !ordersSidebarVisible) {
+                setOrdersSidebarVisible(true);
+              } else {
+                setViewSection('orders');
+              }
+            }} 
+            className={`btn-secondary ${viewSection === 'orders' ? 'active-tab' : ''}`}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+              <path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+            Pedidos
+          </button>
+          <button onClick={() => navigate('/')} className="btn-secondary btn-green">
             Ver Tienda
           </button>
           <button onClick={handleLogout} className="btn-danger">
@@ -925,7 +1171,174 @@ const AdminPanel = () => {
         </div>
       </header>
 
-      <div className="admin-content">
+      <div className={`admin-content ${viewSection === 'products' && ordersSidebarVisible ? 'with-sidebar' : ''}`}>
+        {viewSection === 'orders' ? (
+          <div className="orders-full">
+            <div className="orders-toolbar">
+              <form className="orders-search" onSubmit={async (e) => { 
+                e.preventDefault(); 
+                const id = orderSearchTerm.trim();
+                if (!id) return;
+                setOrdersLoading(true);
+                try {
+                  const response = await orderService.getById(id);
+                  const order = response.data;
+                  // Verificar si el pedido ya existe en la lista
+                  const exists = orders.some(o => o.orderId === order.orderId || o._id === order._id);
+                  if (!exists) {
+                    setOrders(prev => [order, ...prev]);
+                    setNotification({ isOpen: true, message: 'Pedido agregado exitosamente', type: 'success' });
+                  } else {
+                    setNotification({ isOpen: true, message: 'Este pedido ya está en la lista', type: 'info' });
+                  }
+                  setOrderSearchTerm('');
+                } catch (error) {
+                  if (error.response?.status === 404) {
+                    setNotification({ isOpen: true, message: 'Pedido no encontrado', type: 'error' });
+                  } else {
+                    setNotification({ isOpen: true, message: 'Error al buscar el pedido', type: 'error' });
+                  }
+                } finally {
+                  setOrdersLoading(false);
+                }
+              }}>
+                <input
+                  type="text"
+                  placeholder="Pegar ID de pedido..."
+                  value={orderSearchTerm}
+                  onChange={(e) => setOrderSearchTerm(e.target.value)}
+                />
+                <button type="submit" className="btn-primary">Buscar Pedido</button>
+              </form>
+              <div className="orders-filters-inline">
+                {['todos', ...orderStatusOptions.map(s => s.value)].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`filter-chip ${orderStatusFilter === v ? 'active' : ''}`}
+                    onClick={() => {
+                      setOrderStatusFilter(v);
+                      if (v === 'todos') {
+                        // No hacer nada, mantener lista actual
+                      } else {
+                        // Filtrar lista actual por estado
+                        setOrders(prev => prev.filter(o => o.status === v));
+                      }
+                    }}
+                  >
+                    {v === 'todos' ? 'Todos' : orderStatusOptions.find(o => o.value === v)?.label || v}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {ordersLoading ? (
+              <div className="loading">Cargando pedidos...</div>
+            ) : orders.length === 0 ? (
+              <div className="no-orders">No hay pedidos</div>
+            ) : (
+              <div className="orders-list">
+                {orders.map(order => (
+                  <div className="order-card" key={order._id}>
+                    <div className="order-card-header">
+                      <div>
+                        <div className="order-id">{order.orderId}</div>
+                        <div className="order-date">{new Date(order.createdAt).toLocaleString()}</div>
+                      </div>
+                      <span className={`badge ${(() => {
+                        switch (order.status) {
+                          case 'pendiente': return 'badge-warning';
+                          case 'en_preparacion': return 'badge-info';
+                          case 'listo': return 'badge-success';
+                          case 'entregado': return 'badge-neutral';
+                          default: return 'badge-neutral';
+                        }
+                      })()}`}>{orderStatusOptions.find(o => o.value === order.status)?.label || order.status}</span>
+                    </div>
+                    <div className="order-summary">
+                      <div>
+                        <p className="label">Cliente</p>
+                        <p className="value">{order.customer?.name || 'Sin nombre'}</p>
+                      </div>
+                      <div>
+                        <p className="label">Entrega</p>
+                        <p className="value">{order.customer?.deliveryType === 'domicilio' ? 'Envío a domicilio' : 'Retira en local'}</p>
+                      </div>
+                      <div>
+                        <p className="label">Total</p>
+                        <p className="value strong">${(order.total || 0).toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="label">Items</p>
+                        <p className="value">{order.items?.length || 0}</p>
+                      </div>
+                    </div>
+                    <div className="order-actions">
+                      <select
+                        value={order.status}
+                        onChange={(e) => handleOrderStatusChange(order.orderId, e.target.value)}
+                        className="status-select"
+                      >
+                        {orderStatusOptions.map(s => (
+                          <option key={s.value} value={s.value}>{s.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setOrderExpanded(prev => prev === order._id ? null : order._id)}
+                      >
+                        {orderExpanded === order._id ? 'Ocultar detalles' : 'Ver detalles'}
+                      </button>
+                    </div>
+                    {orderExpanded === order._id && (
+                      <div className="order-details">
+                        <div className="order-section">
+                          <h4>Items</h4>
+                          {(order.items || []).map((item, idx) => (
+                            <div className="order-item" key={idx}>
+                              <div className="item-head">
+                                <span className="item-name">{item.name}</span>
+                                <span className="item-qty">x{item.quantity}</span>
+                                <span className="item-price">${item.price?.toFixed(2)}</span>
+                              </div>
+                              {item.options && item.options.length > 0 && (
+                                <ul className="item-options">
+                                  {item.options.map((opt, oIdx) => (
+                                    <li key={oIdx}>
+                                      <span>{opt.label}: {opt.value}</span>
+                                      {opt.priceModifier ? (
+                                        <span className="opt-price">
+                                          {opt.priceModifier > 0 ? '+' : ''}${opt.priceModifier.toFixed(2)}
+                                        </span>
+                                      ) : null}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {item.notes && <p className="item-notes">Nota: {item.notes}</p>}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="order-section">
+                          <h4>Cliente</h4>
+                          <p><strong>Nombre:</strong> {order.customer?.name || 'Sin nombre'}</p>
+                          <p><strong>Tipo de entrega:</strong> {order.customer?.deliveryType === 'domicilio' ? 'Envío a domicilio' : 'Retira en local'}</p>
+                          {order.customer?.deliveryType === 'domicilio' && (
+                            <p><strong>Dirección:</strong> {order.customer?.address || 'Sin dirección'}</p>
+                          )}
+                          {order.customer?.note && <p><strong>Descripción/Nota:</strong> {order.customer.note}</p>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+        <div className="admin-layout">
+          <div className="admin-main">
+
         <div className="admin-toolbar">
           <button 
             onClick={() => {
@@ -939,6 +1352,9 @@ const AdminPanel = () => {
             }} 
             className="btn-primary"
           >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
             {showForm ? 'Cancelar' : 'Nuevo Producto'}
           </button>
         </div>
@@ -1048,131 +1464,279 @@ const AdminPanel = () => {
           </form>
         )}
         
-        <div className="admin-search-bar">
-          <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.35-4.35"></path>
-          </svg>
-          <input
-            type="text"
-            placeholder="Buscar por nombre, descripción o precio..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="admin-search-input"
-          />
+        <div className="category-filters-wrapper">
+          <div className="category-filters">
+          {categoryFilters.map((filter) => (
+            <button
+              key={filter.value}
+              className={`filter-chip ${selectedCategory === filter.value ? 'active' : ''}`}
+              onClick={() => {
+                setSelectedCategory(filter.value);
+                setCurrentPage(1);
+              }}
+            >
+              {filter.label}
+            </button>
+          ))}
+          </div>
+          <div className="view-toggle">
+            <button
+              className={`toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+              onClick={() => setViewMode('table')}
+            >
+              Tabla
+            </button>
+            <button
+              className={`toggle-btn ${viewMode === 'cards' ? 'active' : ''}`}
+              onClick={() => setViewMode('cards')}
+            >
+              Publicaciones
+            </button>
+          </div>
         </div>
 
         {loading ? (
           <div className="loading">Cargando productos...</div>
         ) : (
-          <div className="products-table-container">
-            <table className="products-table">
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>Descripción</th>
-                  <th>Precio</th>
-                  <th>Categoría</th>
-                  <th>Stock</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="no-products">
-                      {searchTerm ? 'No se encontraron productos con ese criterio de búsqueda.' : 'No hay productos. Crea uno nuevo.'}
-                    </td>
-                  </tr>
-                ) : (
-                  products.map((product) => (
-                    <tr key={product._id}>
-                      <td>{product.name}</td>
-                      <td className="description-cell">
-                        {product.description.length > 50
-                          ? `${product.description.substring(0, 50)}...`
-                          : product.description}
-                      </td>
-                      <td>${product.price.toFixed(2)}</td>
-                      <td>{product.category}</td>
-                      <td>
-                        <select
-                          value={product.sinStock ? 'sinStock' : 'disponible'}
-                          onChange={(e) => handleStockChange(product._id, e.target.value)}
-                          className="stock-select"
-                        >
-                          <option value="disponible">Disponible</option>
-                          <option value="sinStock">Sin stock</option>
-                        </select>
-                      </td>
-                      <td>
-                        <div className="actions-buttons">
-                          <button
-                            onClick={() => handleEdit(product)}
-                            className="btn-edit"
-                          >
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => handleTogglePublished(product)}
-                            className={(product.published !== false) ? 'btn-hide' : 'btn-show'}
-                            title={(product.published !== false) ? 'Ocultar producto' : 'Publicar producto'}
-                          >
-                            {(product.published !== false) ? 'Ocultar' : 'Mostrar'}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(product._id)}
-                            className="btn-delete"
-                          >
-                            Eliminar
-                          </button>
-                        </div>
-                      </td>
+          <div className="products-view">
+            {viewMode === 'table' ? (
+              <div className="products-table-container">
+                <div className="table-responsive">
+                  <table className="products-table">
+                  <thead>
+                    <tr>
+                      <th>Nombre</th>
+                      <th className="col-description">Descripción</th>
+                      <th>Precio</th>
+                      <th>Categoría</th>
+                      <th>Stock</th>
+                      <th>Acciones</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-            
-            {/* Paginación */}
-            {(() => {
-              const filteredCount = searchTerm.trim() 
-                ? allProducts.filter(product => 
-                    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    product.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    product.price.toString().includes(searchTerm)
-                  ).length
-                : allProducts.length;
-              const totalPages = Math.ceil(filteredCount / productsPerPage);
-              
-              if (totalPages <= 1) return null;
-              
-              return (
-                <div className="pagination">
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                    className="pagination-btn"
-                  >
-                    ← Anterior
-                  </button>
-                  <span className="pagination-info">
-                    Página {currentPage} de {totalPages} ({filteredCount} productos)
-                  </span>
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={currentPage === totalPages}
-                    className="pagination-btn"
-                  >
-                    Siguiente →
-                  </button>
+                  </thead>
+                  <tbody>
+                    {products.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="no-products">
+                          {selectedCategory !== 'todas' ? 'No se encontraron productos con ese criterio.' : 'No hay productos. Crea uno nuevo.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      products.map((product) => (
+                        <tr key={product._id}>
+                          <td>{product.name}</td>
+                          <td className="description-cell col-description">
+                            {product.description.length > 50
+                              ? `${product.description.substring(0, 50)}...`
+                              : product.description}
+                          </td>
+                          <td>${product.price.toFixed(2)}</td>
+                          <td>{product.category}</td>
+                          <td>
+                            <select
+                              value={product.sinStock ? 'sinStock' : 'disponible'}
+                              onChange={(e) => handleStockChange(product._id, e.target.value)}
+                              className="stock-select"
+                            >
+                              <option value="disponible">Disponible</option>
+                              <option value="sinStock">Sin stock</option>
+                            </select>
+                          </td>
+                          <td>
+                            <div className="actions-buttons">
+                              <button
+                                onClick={() => handleEdit(product)}
+                                className="icon-btn btn-edit"
+                                title="Editar"
+                                aria-label="Editar"
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M15.232 5.232a2.5 2.5 0 1 1 3.536 3.536L7.5 20H4v-3.5l11.232-11.268Z"/>
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => handleTogglePublished(product)}
+                                className={`icon-btn ${(product.published !== false) ? 'btn-hide' : 'btn-show'}`}
+                                title={(product.published !== false) ? 'Ocultar producto' : 'Publicar producto'}
+                                aria-label={(product.published !== false) ? 'Ocultar producto' : 'Publicar producto'}
+                              >
+                                {product.published !== false ? (
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7Z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                  </svg>
+                                ) : (
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="m3 3 18 18M10.477 10.489A3 3 0 0 0 12 15c1.657 0 3-1.343 3-3 0-.53-.132-1.03-.365-1.468"/>
+                                    <path d="M9.88 4.24A9.42 9.42 0 0 1 12 4c5.5 0 9 7 9 7a17.05 17.05 0 0 1-2.102 3.368M6.236 6.27C4.187 7.77 3 10 3 10s3.5 7 9 7c1.225 0 2.374-.273 3.43-.75"/>
+                                  </svg>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleDelete(product._id)}
+                                className="icon-btn btn-delete"
+                                title="Eliminar"
+                                aria-label="Eliminar"
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M3 6h18M9 6v12m6-12v12M5 6l1 14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-14M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  </table>
                 </div>
-              );
-            })()}
+              </div>
+            ) : (
+              <div className="products-cards-grid">
+                {products.length === 0 ? (
+                  <div className="no-products-card">
+                    {selectedCategory !== 'todas' ? 'No se encontraron productos con ese criterio.' : 'No hay productos. Crea uno nuevo.'}
+                  </div>
+                ) : (
+                  products.map((product) => renderProductCard(product))
+                )}
+              </div>
+            )}
+
+            {totalPages > 1 && (
+              <div className="pagination">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="pagination-btn"
+                >
+                  ← Anterior
+                </button>
+                <span className="pagination-info">
+                  Página {currentPage} de {totalPages} ({filteredCount} productos)
+                </span>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="pagination-btn"
+                >
+                  Siguiente →
+                </button>
+              </div>
+            )}
           </div>
+        )}
+          </div>
+          {ordersSidebarVisible && (
+          <aside className="orders-panel">
+            <div className="orders-panel-header">
+              <div>
+                <h3>Pedidos</h3>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn-secondary" onClick={() => setViewSection('orders')}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14" style={{ marginRight: '4px', verticalAlign: 'middle' }}>
+                    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                  </svg>
+                  Expandir
+                </button>
+                <button className="btn-secondary icon-btn-close" onClick={() => {
+                  setOrdersSidebarVisible(false);
+                  setViewSection('products');
+                }} title="Cerrar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <form className="orders-search" onSubmit={async (e) => { 
+              e.preventDefault(); 
+              const id = orderSearchTerm.trim();
+              if (!id) return;
+              setOrdersLoading(true);
+              try {
+                const response = await orderService.getById(id);
+                const order = response.data;
+                // Verificar si el pedido ya existe en la lista
+                const exists = orders.some(o => o.orderId === order.orderId || o._id === order._id);
+                if (!exists) {
+                  setOrders(prev => [order, ...prev]);
+                  setNotification({ isOpen: true, message: 'Pedido agregado exitosamente', type: 'success' });
+                } else {
+                  setNotification({ isOpen: true, message: 'Este pedido ya está en la lista', type: 'info' });
+                }
+                setOrderSearchTerm('');
+              } catch (error) {
+                if (error.response?.status === 404) {
+                  setNotification({ isOpen: true, message: 'Pedido no encontrado', type: 'error' });
+                } else {
+                  setNotification({ isOpen: true, message: 'Error al buscar el pedido', type: 'error' });
+                }
+              } finally {
+                setOrdersLoading(false);
+              }
+            }}>
+              <input
+                type="text"
+                placeholder="Pegar ID de pedido..."
+                value={orderSearchTerm}
+                onChange={(e) => setOrderSearchTerm(e.target.value)}
+              />
+              <button type="submit" className="btn-primary">Buscar Pedido</button>
+            </form>
+            <div className="orders-filters-inline compact">
+              {['todos', ...orderStatusOptions.map(s => s.value)].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`filter-chip ${orderStatusFilter === v ? 'active' : ''}`}
+                  onClick={() => { setOrderStatusFilter(v); loadOrders({ status: v !== 'todos' ? v : undefined }); }}
+                >
+                  {v === 'todos' ? 'Todos' : orderStatusOptions.find(o => o.value === v)?.label || v}
+                </button>
+              ))}
+            </div>
+            <div className="orders-mini-list">
+              {ordersLoading ? (
+                <div className="loading small">Cargando...</div>
+              ) : orders.length === 0 ? (
+                <div className="no-orders small">Sin pedidos</div>
+              ) : (
+                orders.slice(0, 6).map(order => (
+                  <div className="mini-order" key={order._id}>
+                    <div className="mini-order-row">
+                      <span className="mini-order-id">{order.orderId}</span>
+                      <span className={`badge ${(() => {
+                        switch (order.status) {
+                          case 'pendiente': return 'badge-warning';
+                          case 'en_preparacion': return 'badge-info';
+                          case 'listo': return 'badge-success';
+                          case 'entregado': return 'badge-neutral';
+                          default: return 'badge-neutral';
+                        }
+                      })()}`}>{orderStatusOptions.find(o => o.value === order.status)?.label || order.status}</span>
+                    </div>
+                    <div className="mini-order-row spaced">
+                      <span>{order.customer?.name || 'Sin nombre'}</span>
+                      <strong>${(order.total || 0).toFixed(2)}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-secondary inline"
+                      onClick={() => {
+                        setViewSection('orders');
+                        setOrderExpanded(order._id);
+                      }}
+                    >
+                      Ver detalle
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </aside>
+          )}
+        </div>
         )}
       </div>
       
