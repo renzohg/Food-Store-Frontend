@@ -39,6 +39,19 @@ const AdminPanel = () => {
     loadProducts();
   }, [navigate]);
 
+  // Efecto para manejar el scroll cuando se muestra/oculta el formulario
+  useEffect(() => {
+    if (showForm && editingProduct) {
+      // Restaurar la posición del scroll cuando se abre el formulario en modo edición
+      const savedScroll = sessionStorage.getItem('adminScrollPosition');
+      if (savedScroll) {
+        requestAnimationFrame(() => {
+          window.scrollTo(0, parseInt(savedScroll));
+        });
+      }
+    }
+  }, [showForm, editingProduct]);
+
   const loadProducts = async (preserveScroll = false) => {
     try {
       const scrollPosition = preserveScroll ? window.scrollY : null;
@@ -46,9 +59,12 @@ const AdminPanel = () => {
       const response = await productService.getAll({ admin: 'true' });
       setAllProducts(response.data);
       if (preserveScroll && scrollPosition !== null) {
-        setTimeout(() => {
-          window.scrollTo(0, scrollPosition);
-        }, 0);
+        // Use requestAnimationFrame for more reliable scroll restoration
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.scrollTo(0, scrollPosition);
+          });
+        });
       }
     } catch (error) {
       if (error.response?.status === 401) {
@@ -171,6 +187,9 @@ const AdminPanel = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // Guardar posición del scroll antes de enviar
+      const scrollPosition = window.scrollY;
+      
       // Preparar TODAS las opciones que están en formData.options
       const processedOptions = {};
       
@@ -230,6 +249,12 @@ const AdminPanel = () => {
       }
 
       resetForm();
+      
+      // Restaurar scroll después de cargar productos
+      setTimeout(() => {
+        window.scrollTo(0, scrollPosition);
+      }, 50);
+      
       loadProducts(true);
     } catch (error) {
       if (error.response?.status === 401) {
@@ -241,6 +266,9 @@ const AdminPanel = () => {
   };
 
   const handleEdit = (product) => {
+    // Guardar posición actual del scroll antes de abrir el formulario
+    sessionStorage.setItem('adminScrollPosition', window.scrollY.toString());
+    
     setEditingProduct(product);
     const defaultOptions = getDefaultOptionsForCategory(product.category || 'hamburguesas');
     
@@ -349,6 +377,9 @@ const AdminPanel = () => {
   };
 
   const resetForm = () => {
+    // Limpiar la posición guardada cuando se cierra el formulario
+    sessionStorage.removeItem('adminScrollPosition');
+    
     setFormData({
       name: '',
       description: '',
@@ -901,6 +932,8 @@ const AdminPanel = () => {
               if (showForm) {
                 resetForm();
               } else {
+                // Guardar scroll antes de abrir nuevo formulario
+                sessionStorage.setItem('adminScrollPosition', window.scrollY.toString());
                 setShowForm(true);
               }
             }} 
