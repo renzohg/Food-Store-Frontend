@@ -5,10 +5,10 @@ const SearchBar = ({ onSearch, onFilterChange, filters, onSortChange, sortOrder 
   const [searchTerm, setSearchTerm] = useState(filters.search || '');
 
   const categories = [
-    { value: 'hamburguesas', label: '🍔 Hamburguesas' },
-    { value: 'pizzas', label: '🍕 Pizzas' },
-    { value: 'lomos', label: '🥩 Lomitos' },
-    { value: 'empanadas', label: '🥟 Empanadas' }
+    { value: 'hamburguesas', label: 'Hamburguesas' },
+    { value: 'pizzas', label: 'Pizzas' },
+    { value: 'lomos', label: 'Lomitos' },
+    { value: 'empanadas', label: 'Empanadas' }
   ];
 
   const handleSearch = (e) => {
@@ -56,7 +56,7 @@ const SearchBar = ({ onSearch, onFilterChange, filters, onSortChange, sortOrder 
               className={`category-btn ${filters.category === cat.value ? 'active' : ''}`}
               onClick={() => onFilterChange('category', cat.value)}
             >
-              {cat.label.replace(/[🍔🍕🥩🥟]/g, '').trim()}
+              {cat.label}
             </button>
           ))}
           <button

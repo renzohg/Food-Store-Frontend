@@ -30,3 +30,8 @@ a {
 button {
   font-family: inherit;
 }
+
+/* Scroll offset for navbar navigation */
+section {
+  scroll-margin-top: 100px;
+}
