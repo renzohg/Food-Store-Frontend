@@ -14,7 +14,7 @@ const ProductCard = ({ product, onClick }) => {
         <h3 className="product-name">{product.name}</h3>
         <p className="product-description">{product.description}</p>
         <div className="product-footer">
-          <span className="product-price">${product.price.toFixed(2)}</span>
+          <span className="product-price">${Math.round(product.price)}</span>
           {product.sinStock && (
             <span className="product-stock out-of-stock">Sin stock</span>
           )}

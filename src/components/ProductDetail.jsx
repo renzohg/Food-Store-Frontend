@@ -7,7 +7,7 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
   useEffect(() => {
     if (product && product.options) {
       const initialOptions = {};
-      
+
       // Inicializar opciones según lo que esté disponible
       Object.keys(product.options).forEach(key => {
         const option = product.options[key];
@@ -29,24 +29,24 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
           }
         }
       });
-      
+
       setSelectedOptions(initialOptions);
     }
   }, [product]);
 
   const calculatePrice = () => {
     if (!product) return 0;
-    
+
     let total = product.price;
-    
+
     if (!product.options) return total;
-    
+
     Object.keys(product.options).forEach(key => {
       const option = product.options[key];
       if (!option.enabled) return;
-      
+
       const selectedValue = selectedOptions[key];
-      
+
       if (option.choices && option.choices.length > 0) {
         // Opción con choices (tipo, tamaño, cantidad, bebida, conPapas, etc.)
         const choice = option.choices.find(c => c.name === selectedValue);
@@ -55,7 +55,7 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
         }
       }
     });
-    
+
     return total;
   };
 
@@ -121,7 +121,7 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
               const isSelected = selectedOptions[key] === choice.name;
               const isDefault = choice.isDefault;
               const priceMod = choice.priceModifier || 0;
-              
+
               return (
                 <label key={index} className={`choice-label ${isDefault ? 'default-choice' : ''}`}>
                   <input
@@ -140,7 +140,7 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
                   </span>
                   {priceMod !== 0 && (
                     <span className={`option-price ${priceMod < 0 ? 'discount' : ''}`}>
-                      {priceMod > 0 ? '+' : ''}${priceMod.toFixed(2)}
+                      {priceMod > 0 ? '+' : ''}${Math.round(priceMod)}
                     </span>
                   )}
                 </label>
@@ -154,7 +154,7 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
             if (selectedChoice && !selectedChoice.isDefault && selectedChoice.priceModifier > 0) {
               return (
                 <p className="option-hint">
-                  Precio con {selectedChoice.name}: ${newPrice.toFixed(2)} (+${selectedChoice.priceModifier.toFixed(2)})
+                  Precio con {selectedChoice.name}: ${Math.round(newPrice)} (+${Math.round(selectedChoice.priceModifier)})
                 </p>
               );
             }
@@ -175,10 +175,10 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
   return (
     <div className="product-detail-overlay" onClick={onClose}>
       <div className="product-detail-modal" onClick={(e) => e.stopPropagation()}>
-                    <button className="close-button" onClick={onClose}>
-                      ×
-                    </button>
-        
+        <button className="close-button" onClick={onClose}>
+          ×
+        </button>
+
         <div className="product-detail-content">
           <div className="product-detail-image">
             {product.image ? (
@@ -187,41 +187,41 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
               <div className="product-placeholder">Sin imagen</div>
             )}
           </div>
-          
+
           <div className="product-detail-info">
             <h2>{product.name}</h2>
             <p className="product-detail-description">{product.description}</p>
-            
+
             <div className="price-section-top">
               <div className="price-breakdown">
                 <span className="price-label">Precio base:</span>
-                <span className="price-base">${getBasePrice().toFixed(2)}</span>
+                <span className="price-base">${Math.round(getBasePrice())}</span>
               </div>
               {priceDiff !== 0 && (
                 <div className="price-difference">
                   <span className="price-label">Modificaciones:</span>
                   <span className={`price-mod ${priceDiff > 0 ? 'positive' : 'negative'}`}>
-                    {priceDiff > 0 ? '+' : ''}${priceDiff.toFixed(2)}
+                    {priceDiff > 0 ? '+' : ''}${Math.round(priceDiff)}
                   </span>
                 </div>
               )}
               <div className="price-total-row">
                 <span className="price-label">Precio total:</span>
-                <span className="price-total">${calculatePrice().toFixed(2)}</span>
+                <span className="price-total">${Math.round(calculatePrice())}</span>
               </div>
             </div>
-            
+
             {hasOptions && (
               <div className="product-options">
                 <h3 className="options-title">Configura tu pedido:</h3>
-                {Object.keys(product.options || {}).map(key => 
+                {Object.keys(product.options || {}).map(key =>
                   renderOption(key, product.options[key])
                 )}
               </div>
             )}
 
             <div className="product-detail-footer">
-              <button 
+              <button
                 className="add-to-cart-button"
                 onClick={handleAddToCart}
                 disabled={product.sinStock}

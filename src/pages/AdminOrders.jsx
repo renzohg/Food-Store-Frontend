@@ -17,7 +17,7 @@ const statusLabel = (status) => {
 };
 
 const formatCurrency = (value = 0) =>
-  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value);
+  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
 
 const AdminOrders = () => {
   const navigate = useNavigate();
@@ -60,6 +60,10 @@ const AdminOrders = () => {
   };
 
   const handleStatusChange = async (id, status) => {
+    if (status === 'eliminar') {
+      handleDeleteOrder(id);
+      return;
+    }
     try {
       await orderService.updateStatus(id, status);
       setNotification({ isOpen: true, message: 'Estado actualizado', type: 'success' });
@@ -71,6 +75,17 @@ const AdminOrders = () => {
       } else {
         setNotification({ isOpen: true, message: 'No se pudo actualizar el estado', type: 'error' });
       }
+    }
+  };
+
+  const handleDeleteOrder = async (id) => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar este pedido?')) return;
+    try {
+      await orderService.delete(id);
+      setNotification({ isOpen: true, message: 'Pedido eliminado', type: 'success' });
+      loadOrders();
+    } catch (error) {
+      setNotification({ isOpen: true, message: 'No se pudo eliminar el pedido', type: 'error' });
     }
   };
 
@@ -102,6 +117,7 @@ const AdminOrders = () => {
         return 'badge-neutral';
     }
   };
+
 
   return (
     <div className="admin-panel orders-page">
@@ -186,21 +202,25 @@ const AdminOrders = () => {
                 </div>
 
                 <div className="order-actions">
-                  <select
-                    value={order.status}
-                    onChange={(e) => handleStatusChange(order.orderId, e.target.value)}
-                    className="status-select"
-                  >
-                    {statusOptions.map((s) => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
-                    ))}
-                  </select>
+                  <div className="status-control">
+                    <label>Estado:</label>
+                    <select
+                      value={order.status}
+                      onChange={(e) => handleStatusChange(order._id, e.target.value)}
+                      className={`status-select-minimal ${statusClass(order.status)}`}
+                    >
+                      {statusOptions.map((s) => (
+                        <option key={s.value} value={s.value}>{s.label}</option>
+                      ))}
+                      <option value="eliminar" className="delete-option">🗑 Eliminar Pedido</option>
+                    </select>
+                  </div>
                   <button
                     type="button"
-                    className="btn-secondary"
+                    className="btn-details"
                     onClick={() => toggleExpand(order._id)}
                   >
-                    {expandedId === order._id ? 'Ocultar detalles' : 'Ver detalles'}
+                    {expandedId === order._id ? 'Ocultar detalles' : 'Ver Detalles'}
                   </button>
                 </div>
 

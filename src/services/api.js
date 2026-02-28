@@ -29,7 +29,8 @@ export const orderService = {
   create: (data) => api.post('/orders', data),
   getAll: (params) => api.get('/orders', { params }),
   getById: (id) => api.get(`/orders/${encodeURIComponent(id)}`),
-  updateStatus: (id, status) => api.put(`/orders/${encodeURIComponent(id)}/status`, { status })
+  updateStatus: (id, status) => api.put(`/orders/${encodeURIComponent(id)}/status`, { status }),
+  delete: (id) => api.delete(`/orders/${encodeURIComponent(id)}`)
 };
 
 export const authService = {

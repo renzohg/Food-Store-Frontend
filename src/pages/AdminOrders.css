@@ -104,6 +104,82 @@
   font-size: 13px;
 }
 
+.status-select-minimal {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 160px;
+}
+
+.status-select-minimal:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.status-select-minimal.badge-warning {
+  border-left: 4px solid #f59e0b;
+}
+
+.status-select-minimal.badge-info {
+  border-left: 4px solid #3b82f6;
+}
+
+.status-select-minimal.badge-success {
+  border-left: 4px solid #10b981;
+}
+
+.status-select-minimal.badge-neutral {
+  border-left: 4px solid #6b7280;
+}
+
+.delete-option {
+  color: #ef4444;
+  font-weight: 600;
+  background: #fee2e2;
+}
+
+.status-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-control label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.btn-details {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-details:hover {
+  background: #e5e7eb;
+}
+
+.order-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0 0;
+  border-top: 1px dashed #e5e7eb;
+  margin-top: 4px;
+}
+
 .order-details {
   margin-top: 12px;
   padding-top: 12px;
@@ -138,7 +214,8 @@
   color: #111827;
 }
 
-.item-qty, .item-price {
+.item-qty,
+.item-price {
   font-size: 13px;
   color: #374151;
 }
@@ -231,4 +308,3 @@
     width: 100%;
   }
 }
-

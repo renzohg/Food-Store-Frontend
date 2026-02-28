@@ -13,7 +13,7 @@ const Cart = ({ cart, isOpen, onClose, onRemoveItem, onUpdateQuantity }) => {
 
   const handleFinalizeOrder = async () => {
     if (cart.length === 0) return;
-    
+
     if (!showCustomerForm) {
       setShowCustomerForm(true);
       return;
@@ -57,13 +57,13 @@ const Cart = ({ cart, isOpen, onClose, onRemoveItem, onUpdateQuantity }) => {
 
       const response = await orderService.create(orderData);
       const orderId = response.data.orderId;
-      
+
       // Abrir WhatsApp con el ID del pedido
       const whatsappNumber = '5493541227477';
       const whatsappMessage = `ID del pedido: ${orderId}`;
       const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappMessage)}`;
       window.open(whatsappUrl, '_blank');
-      
+
       // Limpiar carrito y formulario
       cart.forEach((_, index) => onRemoveItem(0));
       setCustomerInfo({ name: '', address: '', note: '', deliveryType: 'local' });
@@ -83,11 +83,11 @@ const Cart = ({ cart, isOpen, onClose, onRemoveItem, onUpdateQuantity }) => {
       <div className="cart-modal" onClick={(e) => e.stopPropagation()}>
         <div className="cart-header">
           <h2>Carrito de Compras</h2>
-                      <button className="close-button" onClick={onClose}>
-                        ×
-                      </button>
+          <button className="close-button" onClick={onClose}>
+            ×
+          </button>
         </div>
-        
+
         <div className="cart-content">
           {cart.length === 0 ? (
             <div className="cart-empty">
@@ -120,11 +120,11 @@ const Cart = ({ cart, isOpen, onClose, onRemoveItem, onUpdateQuantity }) => {
                         <button onClick={() => onUpdateQuantity(index, item.quantity + 1)}>+</button>
                       </div>
                       <div className="cart-item-price">
-                        ${(item.finalPrice * item.quantity).toFixed(2)}
+                        ${Math.round(item.finalPrice * item.quantity)}
                       </div>
-                                  <button className="remove-button" onClick={() => onRemoveItem(index)}>
-                                    ×
-                                  </button>
+                      <button className="remove-button" onClick={() => onRemoveItem(index)}>
+                        ×
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -181,18 +181,18 @@ const Cart = ({ cart, isOpen, onClose, onRemoveItem, onUpdateQuantity }) => {
                 )}
                 <div className="cart-total">
                   <span>Total:</span>
-                  <span className="total-price">${calculateTotal().toFixed(2)}</span>
+                  <span className="total-price">${Math.round(calculateTotal())}</span>
                 </div>
-                <button 
-                  className="checkout-button" 
+                <button
+                  className="checkout-button"
                   onClick={handleFinalizeOrder}
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? 'Procesando...' : showCustomerForm ? 'Confirmar Pedido' : 'Finalizar Pedido'}
                 </button>
                 {showCustomerForm && (
-                  <button 
-                    className="checkout-button cancel" 
+                  <button
+                    className="checkout-button cancel"
                     onClick={() => {
                       setShowCustomerForm(false);
                       setCustomerInfo({ name: '', address: '', note: '', deliveryType: 'local' });

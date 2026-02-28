@@ -790,13 +790,51 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  padding: 6px;
+  width: 30px;
+  height: 30px;
+  padding: 4px;
   border: none;
   border-radius: 8px;
   cursor: pointer;
   transition: transform 0.1s ease, box-shadow 0.2s ease;
+}
+
+.status-select-minimal {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 140px;
+}
+
+.status-select-minimal:hover {
+  border-color: #cbd5e1;
+}
+
+.status-select-minimal.badge-warning {
+  border-left: 3px solid #f59e0b;
+}
+
+.status-select-minimal.badge-info {
+  border-left: 3px solid #3b82f6;
+}
+
+.status-select-minimal.badge-success {
+  border-left: 3px solid #10b981;
+}
+
+.status-select-minimal.badge-neutral {
+  border-left: 3px solid #6b7280;
+}
+
+.delete-option {
+  color: #ef4444;
+  font-weight: 600;
+  background: #fee2e2;
 }
 
 .icon-btn svg {

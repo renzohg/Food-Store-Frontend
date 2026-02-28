@@ -138,11 +138,19 @@ const AdminPanel = () => {
   };
 
   const handleOrderStatusChange = async (orderId, status) => {
+    if (status === 'eliminar') {
+      handleDeleteOrder(orderId);
+      return;
+    }
     try {
-      await orderService.updateStatus(orderId, status);
+      // Usar _id si está disponible, si no orderId
+      const targetOrder = orders.find(o => o.orderId === orderId || o._id === orderId);
+      const idToUse = targetOrder?._id || orderId;
+
+      await orderService.updateStatus(idToUse, status);
       setNotification({ isOpen: true, message: 'Estado de pedido actualizado', type: 'success' });
       // Recargar solo el pedido específico
-      const response = await orderService.getById(orderId);
+      const response = await orderService.getById(idToUse);
       setOrders(prevOrders => {
         const index = prevOrders.findIndex(o => o.orderId === orderId || o._id === orderId);
         if (index >= 0) {
@@ -158,6 +166,19 @@ const AdminPanel = () => {
         navigate('/admin/login');
       }
       setNotification({ isOpen: true, message: 'Error al actualizar el estado del pedido', type: 'error' });
+    }
+  };
+
+  const handleDeleteOrder = async (id) => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar este pedido?')) return;
+    try {
+      const targetOrder = orders.find(o => o.orderId === id || o._id === id);
+      const idToUse = targetOrder?._id || id;
+      await orderService.delete(idToUse);
+      setNotification({ isOpen: true, message: 'Pedido eliminado', type: 'success' });
+      setOrders(prev => prev.filter(o => o._id !== idToUse && o.orderId !== idToUse));
+    } catch (error) {
+      setNotification({ isOpen: true, message: 'Error al eliminar el pedido', type: 'error' });
     }
   };
 
@@ -519,7 +540,7 @@ const AdminPanel = () => {
                   step="0.01"
                   min="0"
                   className="styled-input"
-                  placeholder="0.00"
+                  placeholder="0"
                 />
                 <label className="modifier-type-toggle">
                   <input
@@ -1063,7 +1084,7 @@ const AdminPanel = () => {
               <h3 className="card-title">{product.name}</h3>
               <span className="pill">{product.category}</span>
             </div>
-            <span className="card-price">${product.price.toFixed(2)}</span>
+            <span className="card-price">${Math.round(product.price)}</span>
           </div>
           <p className="card-description">{shortDescription}</p>
           <div className="card-stock">
@@ -1222,12 +1243,7 @@ const AdminPanel = () => {
                     className={`filter-chip ${orderStatusFilter === v ? 'active' : ''}`}
                     onClick={() => {
                       setOrderStatusFilter(v);
-                      if (v === 'todos') {
-                        // No hacer nada, mantener lista actual
-                      } else {
-                        // Filtrar lista actual por estado
-                        setOrders(prev => prev.filter(o => o.status === v));
-                      }
+                      loadOrders({ status: v });
                     }}
                   >
                     {v === 'todos' ? 'Todos' : orderStatusOptions.find(o => o.value === v)?.label || v}
@@ -1269,7 +1285,7 @@ const AdminPanel = () => {
                       </div>
                       <div>
                         <p className="label">Total</p>
-                        <p className="value strong">${(order.total || 0).toFixed(2)}</p>
+                        <p className="value strong">${Math.round(order.total || 0)}</p>
                       </div>
                       <div>
                         <p className="label">Items</p>
@@ -1277,21 +1293,32 @@ const AdminPanel = () => {
                       </div>
                     </div>
                     <div className="order-actions">
-                      <select
-                        value={order.status}
-                        onChange={(e) => handleOrderStatusChange(order.orderId, e.target.value)}
-                        className="status-select"
-                      >
-                        {orderStatusOptions.map(s => (
-                          <option key={s.value} value={s.value}>{s.label}</option>
-                        ))}
-                      </select>
+                      <div className="status-control">
+                        <select
+                          value={order.status}
+                          onChange={(e) => handleOrderStatusChange(order._id, e.target.value)}
+                          className={`status-select-minimal ${(() => {
+                            switch (order.status) {
+                              case 'pendiente': return 'badge-warning';
+                              case 'en_preparacion': return 'badge-info';
+                              case 'listo': return 'badge-success';
+                              case 'entregado': return 'badge-neutral';
+                              default: return '';
+                            }
+                          })()}`}
+                        >
+                          {orderStatusOptions.map(s => (
+                            <option key={s.value} value={s.value}>{s.label}</option>
+                          ))}
+                          <option value="eliminar" className="delete-option">🗑 Eliminar</option>
+                        </select>
+                      </div>
                       <button
                         type="button"
                         className="btn-secondary"
                         onClick={() => setOrderExpanded(prev => prev === order._id ? null : order._id)}
                       >
-                        {orderExpanded === order._id ? 'Ocultar detalles' : 'Ver detalles'}
+                        {orderExpanded === order._id ? 'Ocultar' : 'Detalles'}
                       </button>
                     </div>
                     {orderExpanded === order._id && (
@@ -1303,7 +1330,7 @@ const AdminPanel = () => {
                               <div className="item-head">
                                 <span className="item-name">{item.name}</span>
                                 <span className="item-qty">x{item.quantity}</span>
-                                <span className="item-price">${item.price?.toFixed(2)}</span>
+                                <span className="item-price">${Math.round(item.price || 0)}</span>
                               </div>
                               {item.options && item.options.length > 0 && (
                                 <ul className="item-options">
@@ -1312,7 +1339,7 @@ const AdminPanel = () => {
                                       <span>{opt.label}: {opt.value}</span>
                                       {opt.priceModifier ? (
                                         <span className="opt-price">
-                                          {opt.priceModifier > 0 ? '+' : ''}${opt.priceModifier.toFixed(2)}
+                                          {opt.priceModifier > 0 ? '+' : ''}${Math.round(opt.priceModifier)}
                                         </span>
                                       ) : null}
                                     </li>
@@ -1538,7 +1565,7 @@ const AdminPanel = () => {
                                       ? `${product.description.substring(0, 50)}...`
                                       : product.description}
                                   </td>
-                                  <td>${product.price.toFixed(2)}</td>
+                                  <td>${Math.round(product.price)}</td>
                                   <td>{product.category}</td>
                                   <td>
                                     <select
