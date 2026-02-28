@@ -35,7 +35,7 @@ const AdminOrders = () => {
       return;
     }
     loadOrders();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadOrders = async (opts = {}) => {
@@ -147,7 +147,7 @@ const AdminOrders = () => {
         </div>
 
         {loading ? (
-          <div className="loading">Cargando pedidos...</div>
+          <div className="loading">Esperando pedidos...</div>
         ) : orders.length === 0 ? (
           <div className="no-orders">No hay pedidos</div>
         ) : (

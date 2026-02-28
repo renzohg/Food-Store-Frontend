@@ -28,6 +28,7 @@
   from {
     transform: translateX(100%);
   }
+
   to {
     transform: translateX(0);
   }
@@ -39,7 +40,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
+  background: linear-gradient(135deg, #2c3e50 0%, #1a252f 100%);
   color: white;
 }
 
@@ -160,7 +161,7 @@
   text-align: right;
   font-size: 18px;
   font-weight: 700;
-  color: #d32f2f;
+  color: #2c3e50;
 }
 
 .remove-button {
@@ -197,13 +198,13 @@
 
 .total-price {
   font-size: 28px;
-  color: #d32f2f;
+  color: #2c3e50;
 }
 
 .checkout-button {
   width: 100%;
   padding: 16px;
-  background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
+  background: linear-gradient(135deg, #2c3e50 0%, #1a252f 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -211,12 +212,12 @@
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
-  box-shadow: 0 4px 12px rgba(211, 47, 47, 0.3);
+  box-shadow: 0 4px 12px rgba(44, 62, 80, 0.3);
 }
 
 .checkout-button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(211, 47, 47, 0.4);
+  box-shadow: 0 6px 16px rgba(44, 62, 80, 0.4);
 }
 
 .checkout-button:disabled {
@@ -264,7 +265,7 @@
 .customer-form input:focus,
 .customer-form textarea:focus {
   outline: none;
-  border-color: #d32f2f;
+  border-color: #2c3e50;
 }
 
 .customer-form textarea {
@@ -295,7 +296,7 @@
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: #d32f2f;
+  accent-color: #2c3e50;
 }
 
 .delivery-option span {
@@ -307,4 +308,3 @@
     max-width: 100%;
   }
 }
-

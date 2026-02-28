@@ -17,6 +17,7 @@
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -39,6 +40,7 @@
     transform: translateY(50px);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;
@@ -153,8 +155,8 @@
 }
 
 .choice-label:hover {
-  border-color: #d32f2f;
-  background: #fff5f5;
+  border-color: #cbd5e1;
+  background: #f8fafc;
 }
 
 .choice-label input[type="radio"] {
@@ -163,24 +165,24 @@
   cursor: pointer;
 }
 
-.choice-label input[type="radio"]:checked + span {
+.choice-label input[type="radio"]:checked+span {
   font-weight: 600;
-  color: #d32f2f;
+  color: #4caf50;
 }
 
 .choice-label:has(input[type="radio"]:checked) {
-  border-color: #d32f2f;
-  background: #fff5f5;
+  border-color: #4caf50;
+  background: #f1f8f4;
 }
 
 .default-choice {
-  border-color: #4caf50 !important;
-  background: #f1f8f4;
+  border-color: #e0e0e0 !important;
+  background: #fafafa;
 }
 
 .default-badge {
   font-size: 11px;
-  color: #4caf50;
+  color: #666;
   font-weight: 600;
   margin-left: 4px;
 }
@@ -207,10 +209,10 @@
 .price-section-top {
   margin: 24px 0;
   padding: 24px;
-  background: linear-gradient(135deg, #fff5f5 0%, #ffe8e8 100%);
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border-radius: 12px;
-  border: 2px solid #ffcdd2;
-  box-shadow: 0 2px 8px rgba(211, 47, 47, 0.1);
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .product-detail-footer {
@@ -259,7 +261,7 @@
 }
 
 .price-mod.positive {
-  color: #d32f2f;
+  color: #2c3e50;
   font-weight: 600;
 }
 
@@ -283,12 +285,12 @@
 .price-total {
   font-size: 32px;
   font-weight: 700;
-  color: #d32f2f;
+  color: #2c3e50;
 }
 
 .add-to-cart-button {
   padding: 16px 32px;
-  background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
+  background: linear-gradient(135deg, #2c3e50 0%, #1a252f 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -296,14 +298,14 @@
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
-  box-shadow: 0 4px 12px rgba(211, 47, 47, 0.3);
+  box-shadow: 0 4px 12px rgba(44, 62, 80, 0.3);
   flex: 1;
   max-width: 300px;
 }
 
 .add-to-cart-button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(211, 47, 47, 0.4);
+  box-shadow: 0 6px 16px rgba(44, 62, 80, 0.4);
 }
 
 .add-to-cart-button:disabled {
@@ -335,4 +337,3 @@
     max-width: 100%;
   }
 }
-
